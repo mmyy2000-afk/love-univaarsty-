@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Love Universe ♥ I love you in 32 languages</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{color-scheme:dark;--bg:#05010a;--glass:rgba(40,0,30,.45);--line:rgba(255,120,190,.35);--ink:#ffe3f1;--pink:#ff5fa8}
+html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;font-family:"Segoe UI","Noto Sans",system-ui,sans-serif;color:var(--ink)}
+#gl{position:fixed;inset:0;width:100vw;height:100vh;cursor:grab;touch-action:none}
+.g{position:fixed;z-index:5;background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:18px;box-shadow:0 0 30px rgba(255,60,150,.25)}
+#info{left:12px;top:calc(12px + env(safe-area-inset-top,0px));padding:12px 16px;font-size:12px;line-height:1.5}
+#info h1{margin:0 0 4px;font-size:18px;letter-spacing:1px;color:var(--pink)}
+#help{right:12px;top:calc(12px + env(safe-area-inset-top,0px));padding:12px 16px;font-size:12px;line-height:1.6;max-width:240px}
+@media(max-width:640px){#help{display:none}}
+#dock{left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));padding:10px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:min(92vw,460px)}
+button,select,input{font:inherit;font-size:13px;color:var(--ink);background:rgba(255,255,255,.09);border:1px solid transparent;border-radius:12px;padding:8px 12px}
+button{cursor:pointer}button.on{background:#ff5fa8;color:#2a0018}
+input{width:110px}
+#cam{position:fixed;left:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px));width:120px;border-radius:12px;display:none;transform:scaleX(-1);z-index:4;opacity:.8}
+#gest{position:fixed;left:50%;top:40%;transform:translateX(-50%);z-index:6;font-size:20px;pointer-events:none}
+#msg{position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:7;padding:10px 16px;border-radius:12px;background:rgba(0,0,0,.7);font-size:13px;text-align:center;max-width:80vw}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="g" id="info"><h1>LOVE UNIVERSE ♥</h1><span id="cnt">3,00,000</span> × “I love you”<br>32 languages · zoom <b id="zm">1.0×</b></div>
+<div class="g" id="help">Drag = rotate<br>Scroll / pinch = zoom in to read the words<br>Hand mode: 1–4 fingers = shape · fist = collapse · open hand = explode · two hands = zoom</div>
+<div class="g" id="dock">
+  <button id="b0" class="on">♥ Heart</button><button id="b1">Globe</button><button id="b2">Galaxy</button><button id="b3">Name</button>
+  <input id="nm" value="LOVE" maxlength="12" aria-label="Name">
+  <select id="n" aria-label="Particles"><option value="100000">1 lakh</option><option value="300000" selected>3 lakh</option><option value="600000">6 lakh</option></select>
+  <button id="boom" aria-label="Explode">✦</button><button id="hand">Hand mode</button>
+</div>
+<video id="cam" playsinline muted></video>
+<div id="gest"></div>
+<div id="msg">Building universe…</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const say=t=>{const m=$('msg');m.textContent=t;m.style.display='block'};
+const hide=()=>{$('msg').style.display='none'};
+if(typeof THREE==='undefined')say('Could not load Three.js. Check your internet connection and reload.');
+
+const PH=["I love you","நான் உன்னை காதலிக்கிறேன்","मैं तुमसे प्यार करता हूँ","أحبك","Te amo","Je t’aime","Ich liebe dich","Ti amo",
+"Ik hou van je","Jag älskar dig","Kocham cię","Seni seviyorum","Я тебя люблю","Я тебе кохаю","നിന്നെ ഞാൻ സ്നേഹിക്കുന്നു","ನಾನು ನಿನ್ನನ್ನು ಪ್ರೀತಿಸುತ್ತೇನೆ",
+"আমি তোমাকে ভালোবাসি","دوستت دارم","我爱你","愛してる","사랑해","ฉันรักเธอ","Anh yêu em","Aku cinta kamu",
+"Mahal kita","Σ’ αγαπώ","אני אוהב אותך","నేను నిన్ను ప్రేమిస్తున్నాను","Nakupenda","Te iubesc","Minä rakastan sinua","Jeg elsker deg"];
+
+/* text atlas: 4 cols x 8 rows, 512x64 cells */
+const at=document.createElement('canvas');at.width=2048;at.height=512;const ac=at.getContext('2d');
+ac.fillStyle='#fff';ac.textAlign='center';ac.textBaseline='middle';
+const FAM='"Segoe UI","Noto Sans","Nirmala UI","Arial Unicode MS",sans-serif';
+PH.forEach((p,i)=>{let f=40;ac.font=`bold ${f}px ${FAM}`;const w=ac.measureText(p).width;if(w>470){f=Math.floor(f*470/w);ac.font=`bold ${f}px ${FAM}`}
+  ac.fillText(p,(i%4)*512+256,Math.floor(i/4)*64+34)});
+let tex,renderer,scene,cam,mat,mesh,geo,aA,aB,N=0,shape=0,cur=0;
+const cv=$('gl');
+
+function init(){
+tex=new THREE.CanvasTexture(at);tex.anisotropy=8;tex.minFilter=THREE.LinearMipmapLinearFilter;
+renderer=new THREE.WebGLRenderer({canvas:cv,antialias:false,alpha:false});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setClearColor(0x05010a,1);
+scene=new THREE.Scene();cam=new THREE.PerspectiveCamera(50,1,.05,100);cam.position.z=30;
+window.U={uMix:{value:1},uT:{value:0},uS:{value:1},uBurst:{value:0},uRes:{value:800},uTex:{value:tex}};
+mat=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+vertexShader:`attribute vec3 aA;attribute vec3 aB;attribute vec3 aR;
+uniform float uMix,uT,uS,uBurst,uRes;varying vec2 vUv;varying vec3 vC;varying float vPh;varying float vK;
+vec3 hsv(float h,float s,float v){vec3 k=clamp(abs(fract(h+vec3(1.,.6667,.3333))*6.-3.)-1.,0.,1.);return v*mix(vec3(1.),k,s);}
+void main(){
+  float t=clamp(uMix*1.5-aR.x*.5,0.,1.);float e=t*t*(3.-2.*t);
+  vec3 p=mix(aA,aB,e);
+  p+=sin(e*3.14159)*vec3(sin(aR.y*40.+uT),cos(aR.y*33.+uT),sin(aR.y*27.))*1.1;
+  p*=uS*(1.+uBurst*(.4+aR.y*1.3));
+  p+=.025*vec3(sin(uT*1.5+aR.y*90.),cos(uT*1.3+aR.x*80.),sin(uT+aR.y*70.));
+  vec4 mv=modelViewMatrix*vec4(p,1.);
+  float ppu=uRes*.5*projectionMatrix[1][1]/max(-mv.z,.001);
+  vec2 sz=vec2(.06,.008);
+  float kx=max(1.,5./(sz.x*ppu)),ky=max(1.,2.4/(sz.y*ppu));
+  mv.xy+=position.xy*sz*vec2(kx,ky);
+  vK=sqrt(kx*ky);vUv=uv;vPh=aR.z;
+  float tw=.7+.3*sin(uT*2.+aR.x*60.);
+  vC=hsv(.9+.17*fract(aR.y*17.3)+.04*sin(uT*.5+p.y),.62+.3*fract(aR.x*9.1),tw);
+  if(fract(aR.x*53.)>.97)vC=vec3(1.,.95,.8);
+  gl_Position=projectionMatrix*mv;}`,
+fragmentShader:`uniform sampler2D uTex;varying vec2 vUv;varying vec3 vC;varying float vPh;varying float vK;
+void main(){float c=mod(vPh,4.),r=floor(vPh/4.);
+  float a=texture2D(uTex,vec2((c+vUv.x)/4.,(7.-r+vUv.y)/8.)).a;
+  a=max(a,step(1.01,vK)*.1);
+  gl_FragColor=vec4(vC,a*clamp(1.6/vK,.06,1.)*.9);}`});
+resize();addEventListener('resize',resize);
+}
+function resize(){renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();
+  U.uRes.value=renderer.getSize(new THREE.Vector2()).y*renderer.getPixelRatio()}
+
+/* geometry / shapes */
+const g3=()=>(Math.random()+Math.random()+Math.random()-1.5)/1.5;
+function gen(t,N){
+  const o=new Float32Array(N*3);if(t===3)return textPts(N,o);
+  for(let i=0;i<N;i++){let x,y,z;const r=Math.random;
+    if(t===0){const a=r()*6.2832,s=Math.pow(r(),.4);
+      x=16*Math.pow(Math.sin(a),3)/16*s*2.7;
+      y=(13*Math.cos(a)-5*Math.cos(2*a)-2*Math.cos(3*a)-Math.cos(4*a))/16*s*2.7+.4;
+      z=g3()*.9*(1-s*.45)*(1.1-Math.abs(x)/3.2);}
+    else if(t===1){const p=Math.acos(1-2*(i+.5)/N),th=2.39996*i,R=2.7*(.96+r()*.06);
+      x=R*Math.sin(p)*Math.cos(th);y=R*Math.cos(p);z=R*Math.sin(p)*Math.sin(th);}
+    else{const d=Math.pow(r(),.55),a=d*6+(i%3)*2.094+g3()*.4*(1-d*.4),R=d*4.6;
+      x=R*Math.cos(a);z=R*Math.sin(a);y=g3()*.45*(1-d*.7);}
+    o[i*3]=x;o[i*3+1]=y;o[i*3+2]=z;}
+  return o}
+function textPts(N,o){
+  const c=document.createElement('canvas');c.width=1024;c.height=256;const x=c.getContext('2d');
+  const name=($('nm').value||'LOVE').trim()||'LOVE';
+  x.fillStyle='#fff';x.textAlign='center';x.textBaseline='middle';let f=230;x.font=`900 ${f}px ${FAM}`;
+  const w=x.measureText(name).width;if(w>980){f=Math.floor(f*980/w);x.font=`900 ${f}px ${FAM}`}
+  x.fillText(name,512,135);const d=x.getImageData(0,0,1024,256).data,L=[];
+  for(let i=3;i<d.length;i+=4)if(d[i]>128)L.push((i-3)>>2);
+  if(!L.length)return gen(0,N);
+  for(let i=0;i<N;i++){const k=L[(Math.random()*L.length)|0];
+    o[i*3]=((k%1024)-512)/1024*8;o[i*3+1]=-(Math.floor(k/1024)-128)/1024*8;o[i*3+2]=g3()*.25;}
+  return o}
+function build(n){
+  if(mesh){scene.remove(mesh);geo.dispose()}
+  N=n;geo=new THREE.InstancedBufferGeometry();const b=new THREE.PlaneBufferGeometry(1,1);
+  geo.index=b.index;geo.setAttribute('position',b.attributes.position);geo.setAttribute('uv',b.attributes.uv);
+  const s=gen(shape,N),R=new Float32Array(N*3);
+  for(let i=0;i<N;i++){R[i*3]=Math.random();R[i*3+1]=Math.random();R[i*3+2]=Math.floor(Math.random()*32)}
+  aA=new THREE.InstancedBufferAttribute(new Float32Array(s),3);aB=new THREE.InstancedBufferAttribute(s,3);
+  geo.setAttribute('aA',aA);geo.setAttribute('aB',aB);geo.setAttribute('aR',new THREE.InstancedBufferAttribute(R,3));
+  geo.instanceCount=N;mesh=new THREE.Mesh(geo,mat);mesh.frustumCulled=false;scene.add(mesh);U.uMix.value=1;
+  $('cnt').textContent=N>=1e5?(N/1e5).toFixed(0)+',00,000'.replace(/^(\d+),00,000$/,(m,a)=>a==='3'?'3,00,000':a+',00,000'):N;hide()}
+function setShape(s){shape=s;[0,1,2,3].forEach(i=>$('b'+i).classList.toggle('on',i===s));
+  aA.array.set(aB.array);aB.array.set(gen(s,N));aA.needsUpdate=aB.needsUpdate=true;U.uMix.value=0;idle=performance.now()}
+
+/* interaction */
+let tX=0,tY=0,rX=0,rY=0,targetZ=30,idle=performance.now(),burst=0,collapseT=1;
+const ptr=new Map();
+const pd=()=>{const a=[...ptr.values()];return Math.hypot(a[0].clientX-a[1].clientX,a[0].clientY-a[1].clientY)};
+cv.addEventListener('pointerdown',e=>{ptr.set(e.pointerId,e);cv.setPointerCapture(e.pointerId);idle=performance.now()});
+cv.addEventListener('pointermove',e=>{const o=ptr.get(e.pointerId);if(!o)return;idle=performance.now();
+  if(ptr.size===1){tY+=(e.clientX-o.clientX)*.006;tX+=(e.clientY-o.clientY)*.006;ptr.set(e.pointerId,e)}
+  else if(ptr.size===2){const d0=pd();ptr.set(e.pointerId,e);const d1=pd();if(d1>0)targetZ=Math.min(14,Math.max(.25,targetZ*d0/d1))}});
+['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,e=>ptr.delete(e.pointerId)));
+cv.addEventListener('wheel',e=>{e.preventDefault();idle=performance.now();targetZ=Math.min(14,Math.max(.25,targetZ*Math.exp(e.deltaY*.0015)))},{passive:false});
+[0,1,2,3].forEach(i=>$('b'+i).onclick=()=>setShape(i));
+$('nm').oninput=()=>{if(shape===3)setShape(3)};
+$('n').onchange=()=>{say('Rebuilding…');setTimeout(()=>build(+$('n').value),30)};
+$('boom').onclick=()=>{burst=2};
+
+/* optional hand control (loads MediaPipe only when you press the button) */
+let hands=null,handOn=false,H=null,want=-1,stable=0,wasFist=false;
+const load=s=>new Promise((res,rej)=>{const e=document.createElement('script');e.src=s;e.onload=res;e.onerror=rej;document.head.appendChild(e)});
+const TIP=[4,8,12,16,20],PIP=[2,6,10,14,18],d2=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const ext=(l,i)=>d2(l[TIP[i]],l[0])>d2(l[PIP[i]],l[0])*1.16;
+$('hand').onclick=async()=>{
+  if(handOn){handOn=false;$('cam').style.display='none';$('gest').textContent='';$('hand').classList.remove('on');return}
+  try{say('Loading hand tracking…');
+    const B='https://cdn.jsdelivr.net/npm/@mediapipe/';
+    if(!window.Hands){await load(B+'camera_utils@0.3.1640029074/camera_utils.js');await load(B+'hands@0.4.1646424915/hands.js')}
+    if(!hands){hands=new Hands({locateFile:f=>B+'hands@0.4.1646424915/'+f});
+      hands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:.7,minTrackingConfidence:.6});
+      hands.onResults(r=>{H=r});await hands.initialize();
+      const v=$('cam');await new Camera(v,{onFrame:async()=>{if(handOn)await hands.send({image:v})},width:320,height:240}).start()}
+    handOn=true;$('cam').style.display='block';$('hand').classList.add('on');hide()}
+  catch(err){say('Hand mode failed: '+(err.message||err)+'. Allow camera access, or open this page as a local file.');setTimeout(hide,5000)}};
+function handStep(){
+  const L=(H&&H.multiHandLandmarks)||[];
+  if(!handOn||!L.length){$('gest').textContent=handOn?'Show your hand ✋':'';collapseT=1;return}
+  idle=performance.now();let fist=false,g='';
+  const n=L.map(l=>[0,1,2,3,4].filter(i=>ext(l,i)).length);fist=n.every(k=>k===0);
+  if(L.length===2){const d=d2(L[0][9],L[1][9]);targetZ=Math.min(14,Math.max(.25,16*Math.pow(Math.max(.1,d),1.3)*.45));g='two hands = zoom'}
+  else{tY=(L[0][9].x-.5)*Math.PI*2.2;tX=(L[0][9].y-.5)*1.2;
+    if(!fist){const w=Math.min(n[0],5);if(w>=1){if(w===want)stable++;else{want=w;stable=0}
+      if(stable===6){if(w<=4)setShape(w-1);else burst=2}}}}
+  collapseT=fist?.1:1;if(wasFist&&!fist)burst=2;wasFist=fist;
+  $('gest').textContent=g||(fist?'Fist: collapse':'Fingers: '+n[0])}
+
+/* loop */
+let t0=performance.now();
+function frame(){requestAnimationFrame(frame);if(!mesh)return;
+  const now=performance.now(),dt=Math.min(.05,(now-t0)/1000);t0=now;U.uT.value+=dt;
+  handStep();
+  if(U.uMix.value<1)U.uMix.value=Math.min(1,U.uMix.value+dt/2.6);
+  if(now-idle>10000&&U.uMix.value>=1&&!ptr.size){idle=now-3000;setShape((shape+1)%4)}
+  if(now-idle>2000&&!handOn)tY+=dt*.15;
+  burst*=.95;U.uBurst.value=burst;U.uS.value+=(collapseT-U.uS.value)*.12;
+  rY+=(tY-rY)*.1;rX+=(tX-rX)*.1;mesh.rotation.set(rX,rY,0);
+  cam.position.z+=(targetZ-cam.position.z)*.08;
+  $('zm').textContent=(7/cam.position.z).toFixed(1)+'×';
+  renderer.render(scene,cam)}
+if(typeof THREE!=='undefined'){init();build(300000);frame();setTimeout(()=>targetZ=7,200)}
+</script>
+</body>
+</html>
